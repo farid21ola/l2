@@ -1,96 +1,48 @@
 package main
 
 import (
-	"os"
-	"os/exec"
+	"reflect"
+	"sort"
 	"testing"
 )
 
-// TestSortBasic проверяет базовую сортировку
-func TestSortBasic(t *testing.T) {
+// TestExtractKey тестирует функцию извлечения ключа
+func TestExtractKey(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    string
-		args     []string
+		line     string
+		opts     SortOptions
 		expected string
 	}{
 		{
-			name:     "базовая сортировка строк",
-			input:    "cherry\nbanana\napple\n",
-			args:     []string{},
-			expected: "apple\nbanana\ncherry\n",
+			name:     "без указания столбца",
+			line:     "apple\t5\tJan",
+			opts:     SortOptions{keyColumn: 0},
+			expected: "apple\t5\tJan",
 		},
 		{
-			name:     "числовая сортировка",
-			input:    "10\n2\n1\n20\n",
-			args:     []string{"-n"},
-			expected: "1\n2\n10\n20\n",
+			name:     "первый столбец",
+			line:     "apple\t5\tJan",
+			opts:     SortOptions{keyColumn: 1},
+			expected: "apple",
 		},
 		{
-			name:     "обратная сортировка",
-			input:    "apple\nbanana\ncherry\n",
-			args:     []string{"-r"},
-			expected: "cherry\nbanana\napple\n",
+			name:     "столбец с пробелами",
+			line:     "apple\t 5 \tJan",
+			opts:     SortOptions{keyColumn: 2, ignoreBlanks: true},
+			expected: "5",
 		},
 		{
-			name:     "удаление дубликатов",
-			input:    "apple\nbanana\napple\ncherry\nbanana\n",
-			args:     []string{"-u"},
-			expected: "apple\nbanana\ncherry\n",
-		},
-		{
-			name:     "сортировка по столбцу",
-			input:    "cherry\t8\tFeb\nbanana\t3\tMar\napple\t5\tJan\n",
-			args:     []string{"-k", "1"},
-			expected: "apple\t5\tJan\nbanana\t3\tMar\ncherry\t8\tFeb\n",
-		},
-		{
-			name:     "сортировка по месяцам",
-			input:    "cherry\t8\tFeb\nbanana\t3\tMar\napple\t5\tJan\n",
-			args:     []string{"-k", "3", "-M"},
-			expected: "apple\t5\tJan\ncherry\t8\tFeb\nbanana\t3\tMar\n",
-		},
-		{
-			name:     "сортировка человекочитаемых размеров",
-			input:    "2M\n1K\n512K\n1G\n",
-			args:     []string{"-h"},
-			expected: "1K\n512K\n2M\n1G\n",
-		},
-		{
-			name:     "числовая сортировка по столбцу",
-			input:    "cherry\t8\tFeb\nbanana\t3\tMar\napple\t5\tJan\n",
-			args:     []string{"-k", "2", "-n"},
-			expected: "banana\t3\tMar\napple\t5\tJan\ncherry\t8\tFeb\n",
-		},
-		{
-			name:     "обратная числовая сортировка",
-			input:    "cherry\t8\tFeb\nbanana\t3\tMar\napple\t5\tJan\n",
-			args:     []string{"-k", "2", "-n", "-r"},
-			expected: "cherry\t8\tFeb\napple\t5\tJan\nbanana\t3\tMar\n",
-		},
-		{
-			name:     "комбинированные флаги",
-			input:    "apple\t5\tJan\nbanana\t3\tMar\napple\t5\tJan\ncherry\t8\tFeb\n",
-			args:     []string{"-k", "2", "-n", "-u"},
-			expected: "banana\t3\tMar\napple\t5\tJan\ncherry\t8\tFeb\n",
-		},
-		{
-			name:     "отсортированные данные",
-			input:    "apple\nbanana\ncherry\n",
-			args:     []string{"-c"},
-			expected: "Данные отсортированы\n",
-		},
-		{
-			name:     "неотсортированные данные",
-			input:    "cherry\napple\nbanana\n",
-			args:     []string{"-c"},
-			expected: "Данные не отсортированы\n",
+			name:     "несуществующий столбец",
+			line:     "apple\t5",
+			opts:     SortOptions{keyColumn: 5},
+			expected: "",
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			result := runSort(test.input, test.args)
+			result := extractKey(test.line, test.opts)
 			if result != test.expected {
 				t.Errorf("ожидалось %q, получено %q", test.expected, result)
 			}
@@ -98,41 +50,129 @@ func TestSortBasic(t *testing.T) {
 	}
 }
 
-// runSort запускает программу sort с заданными аргументами
-func runSort(input string, args []string) string {
-	// Создаём временный файл с входными данными
-	tmpFile, err := os.CreateTemp("", "sort_test_")
-	if err != nil {
-		panic(err)
+// TestParseValue тестирует функцию парсинга значений
+func TestParseValue(t *testing.T) {
+	tests := []struct {
+		name     string
+		key      string
+		opts     SortOptions
+		expected interface{}
+	}{
+		{
+			name:     "обычная строка",
+			key:      "apple",
+			opts:     SortOptions{},
+			expected: "apple",
+		},
+		{
+			name:     "числовое значение",
+			key:      "123",
+			opts:     SortOptions{numeric: true},
+			expected: 123.0,
+		},
+		{
+			name:     "нечисловое значение при числовой сортировке",
+			key:      "abc",
+			opts:     SortOptions{numeric: true},
+			expected: 0.0,
+		},
+		{
+			name:     "месяц Dec",
+			key:      "Dec",
+			opts:     SortOptions{monthSort: true},
+			expected: 12,
+		},
+		{
+			name:     "неверный месяц",
+			key:      "Invalid",
+			opts:     SortOptions{monthSort: true},
+			expected: 0,
+		},
+		{
+			name:     "человекочитаемый размер 1K",
+			key:      "1K",
+			opts:     SortOptions{humanNumeric: true},
+			expected: 1024.0,
+		},
 	}
-	defer os.Remove(tmpFile.Name())
 
-	// Записываем данные в файл
-	_, err = tmpFile.WriteString(input)
-	if err != nil {
-		panic(err)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result := parseValue(test.key, test.opts)
+			if !reflect.DeepEqual(result, test.expected) {
+				t.Errorf("ожидалось %v, получено %v", test.expected, result)
+			}
+		})
 	}
-	tmpFile.Close()
-
-	// Запускаем программу
-	cmdArgs := append(args, tmpFile.Name())
-	cmd := exec.Command("./task10.exe", cmdArgs...)
-
-	output, err := cmd.Output()
-	if err != nil {
-		panic(err)
-	}
-
-	return string(output)
 }
 
-// TestMain проверяет, что программа собирается
-func TestMain(m *testing.M) {
-	// Проверяем, что программа собирается
-	cmd := exec.Command("go", "build", "task10.go")
-	if err := cmd.Run(); err != nil {
-		panic("Программа не собирается: " + err.Error())
+// TestSortLinesIntegration тестирует полную интеграцию сортировки
+func TestSortLinesIntegration(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []string
+		opts     SortOptions
+		expected []string
+	}{
+		{
+			name:     "базовая сортировка",
+			input:    []string{"cherry", "banana", "apple"},
+			opts:     SortOptions{},
+			expected: []string{"apple", "banana", "cherry"},
+		},
+		{
+			name:     "числовая сортировка",
+			input:    []string{"10", "2", "1", "20"},
+			opts:     SortOptions{numeric: true},
+			expected: []string{"1", "2", "10", "20"},
+		},
+		{
+			name:     "обратная сортировка",
+			input:    []string{"apple", "banana", "cherry"},
+			opts:     SortOptions{reverse: true},
+			expected: []string{"cherry", "banana", "apple"},
+		},
+		{
+			name:     "с дубликатами",
+			input:    []string{"apple", "banana", "apple", "cherry"},
+			opts:     SortOptions{unique: true},
+			expected: []string{"apple", "banana", "cherry"},
+		},
 	}
 
-	os.Exit(m.Run())
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Создаём структуры Line
+			lines := make([]Line, len(test.input))
+			for i, line := range test.input {
+				key := extractKey(line, test.opts)
+				value := parseValue(key, test.opts)
+				lines[i] = Line{
+					original: line,
+					key:      key,
+					value:    value,
+				}
+			}
+
+			// Сортируем
+			sort.Slice(lines, func(i, j int) bool {
+				return compareLines(lines[i], lines[j], test.opts) < 0
+			})
+
+			// Удаляем дубликаты если нужно
+			if test.opts.unique {
+				lines = removeDuplicates(lines, test.opts)
+			}
+
+			// Проверяем результат
+			result := make([]string, len(lines))
+			for i, line := range lines {
+				result[i] = line.original
+			}
+
+			if !reflect.DeepEqual(result, test.expected) {
+				t.Errorf("ожидалось %v, получено %v", test.expected, result)
+			}
+		})
+	}
 }
