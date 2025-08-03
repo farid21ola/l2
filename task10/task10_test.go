@@ -142,7 +142,6 @@ func TestSortLinesIntegration(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			// Создаём структуры Line
 			lines := make([]Line, len(test.input))
 			for i, line := range test.input {
 				key := extractKey(line, test.opts)
@@ -154,17 +153,14 @@ func TestSortLinesIntegration(t *testing.T) {
 				}
 			}
 
-			// Сортируем
 			sort.Slice(lines, func(i, j int) bool {
 				return compareLines(lines[i], lines[j], test.opts) < 0
 			})
 
-			// Удаляем дубликаты если нужно
 			if test.opts.unique {
 				lines = removeDuplicates(lines, test.opts)
 			}
 
-			// Проверяем результат
 			result := make([]string, len(lines))
 			for i, line := range lines {
 				result[i] = line.original
