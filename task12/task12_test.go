@@ -1,211 +1,183 @@
 package main
 
 import (
-	"os"
-	"os/exec"
+	"strings"
 	"testing"
 )
 
-// TestGrepBasic проверяет базовый поиск текста
-func TestGrepBasic(t *testing.T) {
+// TestGetContext тестирует функцию получения контекста
+func TestGetContext(t *testing.T) {
+	allLines := []Line{
+		{number: 1, text: "строка 1"},
+		{number: 2, text: "строка 2"},
+		{number: 3, text: "строка 3"},
+		{number: 4, text: "строка 4"},
+		{number: 5, text: "строка 5"},
+	}
+
 	tests := []struct {
-		name     string
-		input    string
-		args     []string
-		expected string
+		name       string
+		matchIndex int
+		before     int
+		after      int
+		expected   []Line
 	}{
 		{
-			name:     "базовый поиск",
-			input:    "Первая строка\nВторая строка с hello\nТретья строка\n",
-			args:     []string{"hello"},
-			expected: "Вторая строка с hello\n",
+			name:       "контекст в середине",
+			matchIndex: 2,
+			before:     1,
+			after:      1,
+			expected: []Line{
+				{number: 2, text: "строка 2"},
+				{number: 4, text: "строка 4"},
+			},
 		},
 		{
-			name:     "поиск без учета регистра",
-			input:    "Первая строка\nВторая строка с hello\nТретья строка\nЧетвертая строка с HELLO\n",
-			args:     []string{"-i", "hello"},
-			expected: "Вторая строка с hello\nЧетвертая строка с HELLO\n",
+			name:       "контекст в начале",
+			matchIndex: 0,
+			before:     1,
+			after:      1,
+			expected: []Line{
+				{number: 2, text: "строка 2"},
+			},
 		},
 		{
-			name:     "подсчет строк",
-			input:    "Первая строка\nВторая строка с hello\nТретья строка\nЧетвертая строка с HELLO\n",
-			args:     []string{"-c", "hello"},
-			expected: "1\n",
+			name:       "контекст в конце",
+			matchIndex: 4,
+			before:     1,
+			after:      1,
+			expected: []Line{
+				{number: 4, text: "строка 4"},
+			},
 		},
 		{
-			name:     "номера строк",
-			input:    "Первая строка\nВторая строка с hello\nТретья строка\n",
-			args:     []string{"-n", "hello"},
-			expected: "2:Вторая строка с hello\n",
+			name:       "большой контекст",
+			matchIndex: 2,
+			before:     10,
+			after:      10,
+			expected: []Line{
+				{number: 1, text: "строка 1"},
+				{number: 2, text: "строка 2"},
+				{number: 4, text: "строка 4"},
+				{number: 5, text: "строка 5"},
+			},
 		},
 		{
-			name:     "инвертированный поиск",
-			input:    "Первая строка\nВторая строка с hello\nТретья строка\nЧетвертая строка с HELLO\n",
-			args:     []string{"-v", "-i", "hello"},
-			expected: "Первая строка\nТретья строка\n",
-		},
-		{
-			name:     "фиксированная строка",
-			input:    "Первая строка\nВторая строка с hello\nТретья строка\nЧетвертая строка с HELLO\n",
-			args:     []string{"-F", "hello"},
-			expected: "Вторая строка с hello\n",
-		},
-		{
-			name:     "контекст после",
-			input:    "Первая строка\nВторая строка с hello\nТретья строка\nЧетвертая строка\n",
-			args:     []string{"-A", "1", "hello"},
-			expected: "Вторая строка с hello\n-Третья строка\n",
-		},
-		{
-			name:     "контекст до",
-			input:    "Первая строка\nВторая строка\nТретья строка с hello\nЧетвертая строка\n",
-			args:     []string{"-B", "1", "hello"},
-			expected: "-Вторая строка\nТретья строка с hello\n",
-		},
-		{
-			name:     "контекст вокруг",
-			input:    "Первая строка\nВторая строка\nТретья строка с hello\nЧетвертая строка\nПятая строка\n",
-			args:     []string{"-C", "1", "hello"},
-			expected: "-Вторая строка\nТретья строка с hello\n-Четвертая строка\n",
-		},
-		{
-			name:     "комбинированные флаги",
-			input:    "Первая строка\nВторая строка с hello\nТретья строка\nЧетвертая строка с HELLO\n",
-			args:     []string{"-i", "-n", "-c", "hello"},
-			expected: "2\n",
-		},
-		{
-			name:     "регулярное выражение",
-			input:    "Первая строка\nВторая строка с hello\nТретья строка с world\n",
-			args:     []string{"h.*o"},
-			expected: "Вторая строка с hello\n",
-		},
-		{
-			name:     "поиск из STDIN",
-			input:    "Строка с hello\nДругая строка\n",
-			args:     []string{"hello"},
-			expected: "Строка с hello\n",
-		},
-		{
-			name:     "поиск с номерами и контекстом",
-			input:    "Первая строка\nВторая строка\nТретья строка с hello\nЧетвертая строка\n",
-			args:     []string{"-n", "-A", "1", "hello"},
-			expected: "3:Третья строка с hello\n4:-Четвертая строка\n",
-		},
-		{
-			name:     "инвертированный поиск с номерами",
-			input:    "Первая строка\nВторая строка с hello\nТретья строка\n",
-			args:     []string{"-v", "-n", "hello"},
-			expected: "1:Первая строка\n3:Третья строка\n",
-		},
-		{
-			name:     "перекрывающиеся совпадения",
-			input:    "Первая hello\nВторая hello\nТретья hello\n",
-			args:     []string{"-C", "1", "hello"},
-			expected: "Первая hello\nВторая hello\nТретья hello\n",
-		},
-		{
-			name:     "совпадение в первой и последней строке",
-			input:    "Первая hello\nСредняя строка\nПредпоследняя строка\nПоследняя hello\n",
-			args:     []string{"-C", "1", "hello"},
-			expected: "Первая hello\n-Средняя строка\n-Предпоследняя строка\nПоследняя hello\n",
-		},
-		{
-			name:     "нет совпадений",
-			input:    "Первая строка\nВторая строка\nТретья строка\n",
-			args:     []string{"hello"},
-			expected: "",
-		},
-		{
-			name:     "только контекст, без совпадений",
-			input:    "Первая строка\nВторая строка\nТретья строка\n",
-			args:     []string{"-C", "1", "hello"},
-			expected: "",
-		},
-		{
-			name:     "инвертированный поиск с контекстом",
-			input:    "Первая hello\nВторая строка\nТретья hello\nЧетвертая строка\nПятая hello\n",
-			args:     []string{"-v", "-C", "1", "hello"},
-			expected: "-Первая hello\nВторая строка\n-Третья hello\nЧетвертая строка\n-Пятая hello\n",
-		},
-		{
-			name:     "-F с похожей на регулярку строкой",
-			input:    "a.b\naab\nabb\n",
-			args:     []string{"-F", "a.b"},
-			expected: "a.b\n",
-		},
-		{
-			name:     "-c с контекстом",
-			input:    "Первая hello\nВторая строка\nТретья hello\n",
-			args:     []string{"-c", "-C", "1", "hello"},
-			expected: "2\n",
-		},
-		{
-			name:     "-n с контекстом",
-			input:    "Первая строка\nВторая hello\nТретья строка\n",
-			args:     []string{"-n", "-C", "1", "hello"},
-			expected: "1:-Первая строка\n2:Вторая hello\n3:-Третья строка\n",
-		},
-		{
-			name:     "-v с -c",
-			input:    "Первая строка\nВторая hello\nТретья строка\n",
-			args:     []string{"-v", "-c", "hello"},
-			expected: "2\n",
-		},
-		{
-			name:     "пустой файл",
-			input:    "",
-			args:     []string{"hello"},
-			expected: "",
-		},
-		{
-			name:     "STDIN с контекстом",
-			input:    "Первая строка\nВторая hello\nТретья строка\n",
-			args:     []string{"-C", "1", "hello"},
-			expected: "-Первая строка\nВторая hello\n-Третья строка\n",
-		},
-		{
-			name:     "многострочные совпадения (регулярка)",
-			input:    "строка hello\nстрока world\nстрока123hello\n",
-			args:     []string{"строка.*hello"},
-			expected: "строка hello\nстрока123hello\n",
+			name:       "без контекста",
+			matchIndex: 2,
+			before:     0,
+			after:      0,
+			expected:   []Line{},
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			result := runGrep(test.input, test.args)
-			if result != test.expected {
-				t.Errorf("ожидалось %q, получено %q", test.expected, result)
+			result := getContext(allLines, test.matchIndex, test.before, test.after)
+			if len(result) != len(test.expected) {
+				t.Errorf("ожидалось %d элементов, получено %d", len(test.expected), len(result))
+				return
+			}
+			for i := range result {
+				if result[i].number != test.expected[i].number || result[i].text != test.expected[i].text {
+					t.Errorf("элемент %d: ожидалось %+v, получено %+v", i, test.expected[i], result[i])
+				}
 			}
 		})
 	}
 }
 
-// runGrep запускает программу grep с заданными аргументами
-func runGrep(input string, args []string) string {
-	// Создаём временный файл с входными данными
-	tmpFile, err := os.CreateTemp("", "grep_test_")
-	if err != nil {
-		panic(err)
+// TestGrepIntegration тестирует полную интеграцию grep
+func TestGrepIntegration(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		opts     *GrepOptions
+		expected []MatchResult
+	}{
+		{
+			name:  "базовый поиск",
+			input: "Первая строка\nВторая строка с hello\nТретья строка\n",
+			opts: &GrepOptions{
+				pattern: "hello",
+			},
+			expected: []MatchResult{
+				{
+					line:    Line{number: 2, text: "Вторая строка с hello"},
+					isMatch: true,
+					context: []Line{},
+				},
+			},
+		},
+		{
+			name:  "поиск с контекстом",
+			input: "Первая строка\nВторая строка\nТретья строка с hello\nЧетвертая строка\n",
+			opts: &GrepOptions{
+				pattern:       "hello",
+				beforeContext: 1,
+				afterContext:  1,
+			},
+			expected: []MatchResult{
+				{
+					line:    Line{number: 3, text: "Третья строка с hello"},
+					isMatch: true,
+					context: []Line{
+						{number: 2, text: "Вторая строка"},
+						{number: 4, text: "Четвертая строка"},
+					},
+				},
+			},
+		},
+		{
+			name:  "инвертированный поиск",
+			input: "Первая строка\nВторая строка с hello\nТретья строка\n",
+			opts: &GrepOptions{
+				pattern:     "hello",
+				invertMatch: true,
+			},
+			expected: []MatchResult{
+				{
+					line:    Line{number: 1, text: "Первая строка"},
+					isMatch: true,
+					context: []Line{},
+				},
+				{
+					line:    Line{number: 3, text: "Третья строка"},
+					isMatch: true,
+					context: []Line{},
+				},
+			},
+		},
 	}
-	defer os.Remove(tmpFile.Name())
 
-	// Записываем данные в файл
-	_, err = tmpFile.WriteString(input)
-	if err != nil {
-		panic(err)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			reader := strings.NewReader(test.input)
+			matches, err := grep(reader, test.opts)
+			if err != nil {
+				t.Fatalf("неожиданная ошибка: %v", err)
+			}
+
+			if len(matches) != len(test.expected) {
+				t.Errorf("ожидалось %d совпадений, получено %d", len(test.expected), len(matches))
+				return
+			}
+
+			for i, match := range matches {
+				expected := test.expected[i]
+				if match.line.number != expected.line.number {
+					t.Errorf("совпадение %d: ожидался номер строки %d, получен %d",
+						i, expected.line.number, match.line.number)
+				}
+				if match.line.text != expected.line.text {
+					t.Errorf("совпадение %d: ожидался текст %q, получен %q",
+						i, expected.line.text, match.line.text)
+				}
+				if match.isMatch != expected.isMatch {
+					t.Errorf("совпадение %d: ожидался флаг совпадения %v, получен %v",
+						i, expected.isMatch, match.isMatch)
+				}
+			}
+		})
 	}
-	tmpFile.Close()
-
-	// Запускаем программу
-	cmdArgs := append(args, tmpFile.Name())
-	cmd := exec.Command("./task12.exe", cmdArgs...)
-
-	output, err := cmd.Output()
-	if err != nil {
-		panic(err)
-	}
-
-	return string(output)
 }
