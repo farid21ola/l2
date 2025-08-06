@@ -163,7 +163,14 @@ func builtinKill(parts []string) {
 
 // builtinPS реализует встроенную команду просмотра списка процессов.
 func builtinPS() {
-	cmd := exec.Command("tasklist")
+	task := "ps"
+	if curOS == "windows" {
+		v, ok := unixToWindows["ps"]
+		if ok {
+			task = v
+		}
+	}
+	cmd := exec.Command(task)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
