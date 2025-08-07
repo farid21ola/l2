@@ -8,17 +8,14 @@ import (
 )
 
 func main() {
-	// Определяем флаги
 	var depth uint
 	var folder string
 
 	flag.UintVar(&depth, "depth", 1, "Максимальная глубина рекурсии")
 	flag.StringVar(&folder, "folder", "pages", "Папка для сохранения файлов")
 
-	// Парсим флаги
 	flag.Parse()
 
-	// Получаем URL из аргументов командной строки
 	args := flag.Args()
 	if len(args) == 0 {
 		fmt.Println("Использование: task16 [флаги] <URL>")
@@ -30,13 +27,11 @@ func main() {
 
 	url := args[0]
 
-	// Проверяем корректность URL
 	if url == "" {
 		fmt.Println("Ошибка: URL не может быть пустым")
 		os.Exit(1)
 	}
 
-	// Создаем сервис
 	service := service.NewService(folder, depth)
 
 	fmt.Printf("Начинаем рекурсивное сохранение сайта: %s\n", url)
