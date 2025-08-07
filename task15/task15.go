@@ -244,7 +244,7 @@ func executePipeline(input string) {
 	for i := 0; i < len(cmds)-1; i++ {
 		stdout, err := cmds[i].StdoutPipe()
 		if err != nil {
-			fmt.Printf("pipe error: %v\n", err)
+			fmt.Printf("ошибка создания пайпа: %v\n", err)
 			return
 		}
 		cmds[i+1].Stdin = stdout
@@ -259,7 +259,7 @@ func executePipeline(input string) {
 	for _, cmd := range cmds {
 		err := cmd.Start()
 		if err != nil {
-			fmt.Printf("error starting command: %v\n", err)
+			fmt.Printf("ошибка запуска команды: %v\n", err)
 			return
 		}
 	}
