@@ -7,6 +7,8 @@ import (
 	"os"
 )
 
+// go run task16.go -depth=2 https://habr.com/ru/companies/vk/articles/314804/
+
 func main() {
 	var depth uint
 	var folder string
